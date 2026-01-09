@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuizFlow - 학습 퀴즈 플랫폼</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 기본 흑백 모드 */
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --bg-tertiary: #e5e5e5;
+            --text-primary: #000000;
+            --text-secondary: #4a4a4a;
+            --text-tertiary: #6b6b6b;
+            --border-color: #d1d1d1;
+            --accent-primary: #333333;
+            --accent-secondary: #666666;
+            --success-bg: #f0f0f0;
+            --success-text: #2d2d2d;
+            --error-bg: #e8e8e8;
+            --error-text: #1a1a1a;
+            --info-bg: #f5f5f5;
+            --info-text: #333333;
+        }
+
+        /* 컬러 모드 */
+        [data-color-mode="color"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #eff6ff;
+            --bg-tertiary: #dbeafe;
+            --text-primary: #1e293b;
+            --text-secondary: #334155;
+            --text-tertiary: #64748b;
+            --border-color: #cbd5e1;
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+            --success-bg: #dcfce7;
+            --success-text: #166534;
+            --error-bg: #fee2e2;
+            --error-text: #991b1b;
+            --info-bg: #dbeafe;
+            --info-text: #1e40af;
+        }
+
+        body {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .bg-card {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .bg-accent {
+            background-color: var(--accent-primary);
+            color: var(--bg-primary);
+        }
+
+        .bg-accent:hover {
+            background-color: var(--accent-secondary);
+        }
+
+        .bg-success {
+            background-color: var(--success-bg);
+            color: var(--success-text);
+            border: 1px solid var(--border-color);
+        }
+
+        .bg-error {
+            background-color: var(--error-bg);
+            color: var(--error-text);
+            border: 1px solid var(--border-color);
+        }
+
+        .bg-info {
+            background-color: var(--info-bg);
+            color: var(--info-text);
+            border: 1px solid var(--border-color);
+        }
+
+        .text-secondary {
+            color: var(--text-secondary);
+        }
+
+        .text-tertiary {
+            color: var(--text-tertiary);
+        }
+
+        .border-custom {
+            border-color: var(--border-color);
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-primary {
+            background-color: var(--accent-primary);
+            color: var(--bg-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-secondary);
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--border-color);
+        }
+
+        .option-btn {
+            border: 2px solid var(--border-color);
+            background-color: var(--bg-primary);
+        }
+
+        .option-btn:hover:not(:disabled) {
+            border-color: var(--accent-primary);
+        }
+
+        .option-btn.selected {
+            border-color: var(--accent-primary);
+            background-color: var(--bg-tertiary);
+        }
+
+        .option-btn.correct {
+            border-color: var(--success-text);
+            background-color: var(--success-bg);
+        }
+
+        .option-btn.wrong {
+            border-color: var(--error-text);
+            background-color: var(--error-bg);
+        }
+
+        .progress-bar {
+            background-color: var(--bg-tertiary);
+            height: 0.5rem;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background-color: var(--accent-primary);
+            height: 100%;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen p-4 py-8"></div>
+
+    <script src="js/data.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/csvParser.js"></script>
+    <script src="js/review.js"></script>
+    <script src="js/quiz.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
