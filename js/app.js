@@ -940,11 +940,12 @@ math,basic,Math Quiz,,What is 1+1?,1,2,3,4,2,1+1 equals 2`;
         const title = row.Title || `Quiz ${index + 1}`;
         const passageText = row.PassageText || row.Passage || null;
         
+        // Title별로 퀴즈를 구분 (더 이상 subject+level+title이 아님)
         const quizKey = `${subject}_${level}_${title}`;
         
         if (!quizMap.has(quizKey)) {
           quizMap.set(quizKey, {
-            id: `csv-${subject}-${level}-${Date.now()}-${index}`,
+            id: `csv-${subject}-${level}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             subject,
             level,
             title,
@@ -955,6 +956,7 @@ math,basic,Math Quiz,,What is 1+1?,1,2,3,4,2,1+1 equals 2`;
 
         const quiz = quizMap.get(quizKey);
         
+        // 같은 지문끼리 그룹화
         let passage = quiz.passages.find(p => p.text === passageText);
         if (!passage) {
           passage = {
@@ -1104,6 +1106,15 @@ math,basic,Math Quiz,,What is 1+1?,1,2,3,4,2,1+1 equals 2`;
       resultDiv.innerHTML = '';
       this.render();
     }, 1500);
+  }
+
+  deleteQuiz(quizId) {
+    if (!confirm('이 퀴즈를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    Storage.deleteCustomQuiz(quizId);
+    this.render();
   }
 }
 
