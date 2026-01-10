@@ -135,6 +135,12 @@ const Storage = {
     this.saveCustomQuizzes(quizzes);
   },
 
+  deleteCustomQuiz(quizId) {
+    const quizzes = this.getCustomQuizzes();
+    const filtered = quizzes.filter(q => q.id !== quizId);
+    this.saveCustomQuizzes(filtered);
+  },
+
   deleteQuizzesBySubject(subjectId) {
     const quizzes = this.getCustomQuizzes();
     const filtered = quizzes.filter(q => q.subject !== subjectId);
