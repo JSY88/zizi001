@@ -56,6 +56,9 @@ class QuizFlowApp {
       case 'settings':
         app.innerHTML = this.renderSettings();
         break;
+      case 'manageSubjects':
+        app.innerHTML = this.renderManageSubjects();
+        break;
     }
 
     this.attachEventListeners();
@@ -66,6 +69,7 @@ class QuizFlowApp {
     const stats = Storage.getStats();
     const wrongCount = Storage.getWrongResults().length;
     const allQuizzes = this.getAllQuizzes();
+    const allSubjects = this.getAllSubjects();
 
     return `
       <div class="max-w-4xl mx-auto">
@@ -122,9 +126,14 @@ class QuizFlowApp {
 
         <!-- 과목 선택 -->
         <div class="bg-card p-6 rounded-lg shadow">
-          <h2 class="text-xl font-bold mb-4">📖 과목 선택</h2>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold">📖 과목 선택</h2>
+            <button onclick="app.navigateTo('manageSubjects')" class="btn btn-secondary text-sm">
+              ⚙️ 과목 관리
+            </button>
+          </div>
           <div class="space-y-4">
-            ${SAMPLE_DATA.subjects.map(subject => {
+            ${allSubjects.map(subject => {
               const quizCount = allQuizzes[subject.id]?.length || 0;
               return `
                 <div onclick="app.navigateTo('quizList', { selectedSubject: '${subject.id}' })" 
@@ -142,6 +151,15 @@ class QuizFlowApp {
                 </div>
               `;
             }).join('')}
+            
+            ${allSubjects.length === 0 ? `
+              <div class="text-center p-8 text-secondary">
+                <p class="mb-4">아직 과목이 없습니다.</p>
+                <button onclick="app.navigateTo('manageSubjects')" class="btn btn-primary">
+                  첫 과목 추가하기
+                </button>
+              </div>
+            ` : ''}
           </div>
         </div>
       </div>
@@ -466,6 +484,16 @@ class QuizFlowApp {
           <!-- 텍스트 입력 탭 -->
           <div id="upload-text" style="display: none;">
             <div class="mb-4">
+              <label class="block text-sm font-bold mb-2">과목 선택 (옵션):</label>
+              <select id="uploadSubject" class="w-full p-2 border-2 border-custom rounded mb-4">
+                <option value="">자동 감지 (CSV의 Subject 필드 사용)</option>
+                ${this.getAllSubjects().map(s => 
+                  `<option value="${s.id}">${s.icon} ${s.name}</option>`
+                ).join('')}
+              </select>
+            </div>
+
+            <div class="mb-4">
               <label class="block text-sm font-bold mb-2">CSV 텍스트 입력 또는 붙여넣기:</label>
               <textarea 
                 id="csvText" 
@@ -493,6 +521,91 @@ english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
 
           <div id="uploadResult" class="mt-4"></div>
         </div>
+      </div>
+    `;
+  }
+
+  // 과목 관리 화면
+  renderManageSubjects() {
+    const allSubjects = this.getAllSubjects();
+    const customSubjects = Storage.getCustomSubjects();
+
+    return `
+      <div class="max-w-4xl mx-auto">
+        <button onclick="app.navigateTo('home')" class="mb-4 text-secondary hover:text-primary">
+          ← 홈으로
+        </button>
+
+        <div class="bg-card p-6 rounded-lg shadow mb-6">
+          <h1 class="text-2xl font-bold mb-4">⚙️ 과목 관리</h1>
+          
+          <!-- 새 과목 추가 -->
+          <div class="mb-6 p-4 bg-info rounded">
+            <h3 class="font-bold mb-3">➕ 새 과목 추가</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input 
+                type="text" 
+                id="newSubjectId" 
+                placeholder="과목 ID (예: math, korean)"
+                class="p-2 border-2 border-custom rounded"
+              />
+              <input 
+                type="text" 
+                id="newSubjectName" 
+                placeholder="과목 이름 (예: 수학)"
+                class="p-2 border-2 border-custom rounded"
+              />
+              <input 
+                type="text" 
+                id="newSubjectIcon" 
+                placeholder="아이콘 (예: 🔢)"
+                class="p-2 border-2 border-custom rounded"
+              />
+            </div>
+            <button onclick="app.addSubject()" class="btn btn-primary w-full mt-3">
+              과목 추가
+            </button>
+          </div>
+
+          <!-- 기존 과목 목록 -->
+          <div>
+            <h3 class="font-bold mb-3">📚 현재 과목 목록</h3>
+            <div class="space-y-3">
+              ${allSubjects.map(subject => {
+                const isBuiltIn = SAMPLE_DATA.subjects.some(s => s.id === subject.id);
+                const quizCount = this.getAllQuizzes()[subject.id]?.length || 0;
+                
+                return `
+                  <div class="border-2 border-custom p-4 rounded-lg">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <span class="text-3xl">${subject.icon}</span>
+                        <div>
+                          <h4 class="font-bold">${subject.name}</h4>
+                          <p class="text-sm text-secondary">
+                            ID: ${subject.id} | ${quizCount} 퀴즈
+                            ${isBuiltIn ? ' | 기본 과목' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      ${!isBuiltIn ? `
+                        <button 
+                          onclick="app.deleteSubject('${subject.id}')"
+                          class="btn btn-secondary text-sm">
+                          🗑️ 삭제
+                        </button>
+                      ` : `
+                        <span class="text-xs text-tertiary">삭제 불가</span>
+                      `}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div id="subjectManageResult"></div>
       </div>
     `;
   }
@@ -548,10 +661,28 @@ english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
   }
 
   // 액션 메서드들
+  getAllSubjects() {
+    const builtIn = SAMPLE_DATA.subjects;
+    const custom = Storage.getCustomSubjects();
+    
+    // 중복 제거 (ID 기준)
+    const subjectMap = new Map();
+    builtIn.forEach(s => subjectMap.set(s.id, s));
+    custom.forEach(s => subjectMap.set(s.id, s));
+    
+    return Array.from(subjectMap.values());
+  }
+
   getAllQuizzes() {
     const custom = Storage.getCustomQuizzes();
-    const allQuizzes = { ...SAMPLE_DATA.quizzes };
+    const allQuizzes = {};
     
+    // 기본 퀴즈 복사
+    Object.keys(SAMPLE_DATA.quizzes).forEach(subject => {
+      allQuizzes[subject] = [...SAMPLE_DATA.quizzes[subject]];
+    });
+    
+    // 커스텀 퀴즈 추가
     custom.forEach(quiz => {
       if (!allQuizzes[quiz.subject]) {
         allQuizzes[quiz.subject] = [];
@@ -661,7 +792,9 @@ english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
 
   async uploadCSVText() {
     const textArea = document.getElementById('csvText');
+    const subjectSelect = document.getElementById('uploadSubject');
     const resultDiv = document.getElementById('uploadResult');
+    const overrideSubject = subjectSelect?.value || null;
     
     if (!textArea.value.trim()) {
       resultDiv.innerHTML = '<div class="p-4 bg-error rounded">CSV 텍스트를 입력해주세요.</div>';
@@ -670,6 +803,25 @@ english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
 
     try {
       const quizzes = this.parseCSVText(textArea.value);
+      
+      // 과목 선택 시 모든 퀴즈의 subject 덮어쓰기
+      if (overrideSubject) {
+        quizzes.forEach(quiz => {
+          quiz.subject = overrideSubject;
+        });
+      }
+      
+      // 과목이 존재하지 않으면 자동 추가
+      quizzes.forEach(quiz => {
+        const allSubjects = this.getAllSubjects();
+        if (!allSubjects.some(s => s.id === quiz.subject)) {
+          Storage.addCustomSubject({
+            id: quiz.subject,
+            name: quiz.subject.charAt(0).toUpperCase() + quiz.subject.slice(1),
+            icon: '📁'
+          });
+        }
+      });
       
       quizzes.forEach(quiz => Storage.addCustomQuiz(quiz));
       
@@ -882,6 +1034,76 @@ math,basic,Math Quiz,,What is 1+1?,1,2,3,4,2,1+1 equals 2`;
       alert('데이터가 삭제되었습니다.');
       this.navigateTo('home');
     }
+  }
+
+  // 과목 관리 메서드들
+  addSubject() {
+    const id = document.getElementById('newSubjectId').value.trim().toLowerCase();
+    const name = document.getElementById('newSubjectName').value.trim();
+    const icon = document.getElementById('newSubjectIcon').value.trim();
+    const resultDiv = document.getElementById('subjectManageResult');
+
+    if (!id || !name) {
+      resultDiv.innerHTML = '<div class="p-4 bg-error rounded">과목 ID와 이름을 모두 입력해주세요.</div>';
+      return;
+    }
+
+    // ID 중복 체크
+    const allSubjects = this.getAllSubjects();
+    if (allSubjects.some(s => s.id === id)) {
+      resultDiv.innerHTML = '<div class="p-4 bg-error rounded">이미 존재하는 과목 ID입니다.</div>';
+      return;
+    }
+
+    // ID 형식 체크 (영문, 숫자, 하이픈, 언더스코어만)
+    if (!/^[a-z0-9_-]+$/.test(id)) {
+      resultDiv.innerHTML = '<div class="p-4 bg-error rounded">과목 ID는 영문 소문자, 숫자, -, _만 사용 가능합니다.</div>';
+      return;
+    }
+
+    Storage.addCustomSubject({
+      id: id,
+      name: name,
+      icon: icon || '📁'
+    });
+
+    resultDiv.innerHTML = '<div class="p-4 bg-success rounded">✓ 과목이 추가되었습니다.</div>';
+    
+    setTimeout(() => {
+      resultDiv.innerHTML = '';
+      this.render();
+    }, 1500);
+  }
+
+  deleteSubject(subjectId) {
+    // 기본 과목은 삭제 불가
+    if (SAMPLE_DATA.subjects.some(s => s.id === subjectId)) {
+      alert('기본 과목은 삭제할 수 없습니다.');
+      return;
+    }
+
+    // 퀴즈가 있는지 확인
+    const quizzes = this.getAllQuizzes()[subjectId] || [];
+    const customQuizzes = quizzes.filter(q => q.source === 'csv');
+    
+    if (customQuizzes.length > 0) {
+      if (!confirm(`이 과목에는 ${customQuizzes.length}개의 퀴즈가 있습니다.\n과목과 퀴즈를 모두 삭제하시겠습니까?`)) {
+        return;
+      }
+      
+      // 해당 과목의 퀴즈도 함께 삭제
+      Storage.deleteQuizzesBySubject(subjectId);
+    }
+
+    Storage.deleteCustomSubject(subjectId);
+    
+    const resultDiv = document.getElementById('subjectManageResult');
+    resultDiv.innerHTML = '<div class="p-4 bg-success rounded">✓ 과목이 삭제되었습니다.</div>';
+    
+    setTimeout(() => {
+      resultDiv.innerHTML = '';
+      this.render();
+    }, 1500);
   }
 }
 
