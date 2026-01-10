@@ -6,6 +6,7 @@ class QuizFlowApp {
     this.selectedSubject = null;
     this.selectedQuiz = null;
     this.reviewMode = null;
+    this.uploadTab = 'file'; // 기본값: 파일 업로드 탭
     this.settings = Storage.getSettings();
     this.init();
   }
@@ -429,24 +430,65 @@ class QuizFlowApp {
         <div class="bg-card p-6 rounded-lg shadow mb-6">
           <h1 class="text-2xl font-bold mb-4">📤 CSV 업로드</h1>
           
-          <div class="mb-6">
-            <label class="block text-sm font-bold mb-2">CSV 파일 선택:</label>
-            <input type="file" id="csvFile" accept=".csv" class="w-full p-2 border-2 border-custom rounded">
+          <!-- 탭 선택 -->
+          <div class="flex gap-2 mb-6 border-b-2 border-custom">
+            <button 
+              onclick="app.setUploadTab('file')" 
+              id="tab-file"
+              class="px-4 py-2 font-bold border-b-2 -mb-0.5">
+              📁 파일 업로드
+            </button>
+            <button 
+              onclick="app.setUploadTab('text')" 
+              id="tab-text"
+              class="px-4 py-2 font-bold border-b-2 -mb-0.5 border-transparent">
+              📝 텍스트 입력
+            </button>
           </div>
 
-          <div class="mb-4 p-4 bg-info rounded">
+          <!-- 파일 업로드 탭 -->
+          <div id="upload-file" style="display: block;">
+            <div class="mb-6">
+              <label class="block text-sm font-bold mb-2">CSV 파일 선택:</label>
+              <input type="file" id="csvFile" accept=".csv" class="w-full p-2 border-2 border-custom rounded">
+            </div>
+
+            <div class="flex gap-4">
+              <button onclick="app.uploadCSVFile()" class="btn btn-primary flex-1">
+                파일 업로드
+              </button>
+              <button onclick="app.downloadTemplate()" class="btn btn-secondary">
+                템플릿 다운로드
+              </button>
+            </div>
+          </div>
+
+          <!-- 텍스트 입력 탭 -->
+          <div id="upload-text" style="display: none;">
+            <div class="mb-4">
+              <label class="block text-sm font-bold mb-2">CSV 텍스트 입력 또는 붙여넣기:</label>
+              <textarea 
+                id="csvText" 
+                class="w-full h-64 p-4 border-2 border-custom rounded font-mono text-sm"
+                placeholder="Subject,Level,Title,PassageText,Question,Option1,Option2,Option3,Option4,CorrectAnswer,Explanation
+english,a1,Test,&quot;Sample text&quot;,What is this?,A,B,C,D,2,Explanation here"></textarea>
+            </div>
+
+            <div class="flex gap-4">
+              <button onclick="app.uploadCSVText()" class="btn btn-primary flex-1">
+                텍스트 업로드
+              </button>
+              <button onclick="app.clearCSVText()" class="btn btn-secondary">
+                내용 지우기
+              </button>
+            </div>
+          </div>
+
+          <!-- 형식 예시 -->
+          <div class="mt-6 p-4 bg-info rounded">
             <h3 class="font-bold mb-2">📋 CSV 형식 예시:</h3>
             <pre class="text-xs overflow-x-auto whitespace-pre">Subject,Level,Title,PassageText,Question,Option1,Option2,Option3,Option4,CorrectAnswer,Explanation
 english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
-          </div>
-
-          <div class="flex gap-4">
-            <button onclick="app.uploadCSV()" class="btn btn-primary flex-1">
-              업로드하기
-            </button>
-            <button onclick="CSVParser.downloadTemplate()" class="btn btn-secondary">
-              템플릿 다운로드
-            </button>
           </div>
 
           <div id="uploadResult" class="mt-4"></div>
@@ -565,7 +607,27 @@ english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
     this.navigateTo('review');
   }
 
-  async uploadCSV() {
+  // CSV 업로드 관련 메서드들
+  setUploadTab(tab) {
+    this.uploadTab = tab;
+    
+    // 탭 버튼 스타일
+    document.getElementById('tab-file').className = 
+      tab === 'file' 
+        ? 'px-4 py-2 font-bold border-b-2 -mb-0.5 border-black'
+        : 'px-4 py-2 font-bold border-b-2 -mb-0.5 border-transparent';
+    
+    document.getElementById('tab-text').className = 
+      tab === 'text' 
+        ? 'px-4 py-2 font-bold border-b-2 -mb-0.5 border-black'
+        : 'px-4 py-2 font-bold border-b-2 -mb-0.5 border-transparent';
+    
+    // 탭 컨텐츠 표시
+    document.getElementById('upload-file').style.display = tab === 'file' ? 'block' : 'none';
+    document.getElementById('upload-text').style.display = tab === 'text' ? 'block' : 'none';
+  }
+
+  async uploadCSVFile() {
     const fileInput = document.getElementById('csvFile');
     const resultDiv = document.getElementById('uploadResult');
     
@@ -575,7 +637,7 @@ english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
     }
 
     try {
-      const quizzes = await CSVParser.parseFile(fileInput.files[0]);
+      const quizzes = await this.parseCSVFile(fileInput.files[0]);
       
       quizzes.forEach(quiz => Storage.addCustomQuiz(quiz));
       
@@ -595,6 +657,198 @@ english,a1,Test,"Sample text",What?,A,B,C,D,2,Explanation</pre>
         </div>
       `;
     }
+  }
+
+  async uploadCSVText() {
+    const textArea = document.getElementById('csvText');
+    const resultDiv = document.getElementById('uploadResult');
+    
+    if (!textArea.value.trim()) {
+      resultDiv.innerHTML = '<div class="p-4 bg-error rounded">CSV 텍스트를 입력해주세요.</div>';
+      return;
+    }
+
+    try {
+      const quizzes = this.parseCSVText(textArea.value);
+      
+      quizzes.forEach(quiz => Storage.addCustomQuiz(quiz));
+      
+      resultDiv.innerHTML = `
+        <div class="p-4 bg-success rounded">
+          <div class="font-bold mb-2">✓ 업로드 완료!</div>
+          <div class="text-sm">${quizzes.length}개의 퀴즈가 추가되었습니다.</div>
+        </div>
+      `;
+      
+      textArea.value = '';
+      setTimeout(() => this.navigateTo('home'), 2000);
+    } catch (error) {
+      resultDiv.innerHTML = `
+        <div class="p-4 bg-error rounded">
+          <div class="font-bold mb-2">✗ 오류 발생</div>
+          <div class="text-sm">${error.message}</div>
+        </div>
+      `;
+    }
+  }
+
+  clearCSVText() {
+    document.getElementById('csvText').value = '';
+    document.getElementById('uploadResult').innerHTML = '';
+  }
+
+  downloadTemplate() {
+    const template = `Subject,Level,Title,PassageText,Question,Option1,Option2,Option3,Option4,CorrectAnswer,Explanation
+english,a1,Sample Quiz,"This is a sample passage text. You can leave this empty for questions without passages.",What is this?,Answer A,Answer B,Answer C,Answer D,2,This explains why B is correct
+english,a1,Sample Quiz,,Another question?,Option 1,Option 2,Option 3,Option 4,1,Explanation for question 2
+math,basic,Math Quiz,,What is 1+1?,1,2,3,4,2,1+1 equals 2`;
+
+    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'quiz-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // CSV 파싱 메서드들
+  parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+
+    return result.map(field => field.replace(/^"|"$/g, ''));
+  }
+
+  parseCSVText(csvText) {
+    const lines = csvText.trim().split('\n');
+    if (lines.length < 2) {
+      throw new Error('CSV 파일이 비어있거나 형식이 잘못되었습니다.');
+    }
+
+    const headers = this.parseCSVLine(lines[0]);
+    const rows = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim()) {
+        const values = this.parseCSVLine(lines[i]);
+        const row = {};
+        headers.forEach((header, index) => {
+          row[header.trim()] = values[index] ? values[index].trim() : '';
+        });
+        rows.push(row);
+      }
+    }
+
+    return this.rowsToQuizzes(rows);
+  }
+
+  async parseCSVFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        try {
+          const csvText = event.target.result;
+          const quizzes = this.parseCSVText(csvText);
+          resolve(quizzes);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = () => reject(new Error('파일 읽기 실패'));
+      reader.readAsText(file, 'UTF-8');
+    });
+  }
+
+  rowsToQuizzes(rows) {
+    const quizMap = new Map();
+
+    rows.forEach((row, index) => {
+      try {
+        const subject = row.Subject || 'general';
+        const level = row.Level || 'basic';
+        const title = row.Title || `Quiz ${index + 1}`;
+        const passageText = row.PassageText || row.Passage || null;
+        
+        const quizKey = `${subject}_${level}_${title}`;
+        
+        if (!quizMap.has(quizKey)) {
+          quizMap.set(quizKey, {
+            id: `csv-${subject}-${level}-${Date.now()}-${index}`,
+            subject,
+            level,
+            title,
+            source: 'csv',
+            passages: []
+          });
+        }
+
+        const quiz = quizMap.get(quizKey);
+        
+        let passage = quiz.passages.find(p => p.text === passageText);
+        if (!passage) {
+          passage = {
+            id: `p${quiz.passages.length + 1}`,
+            text: passageText,
+            questions: []
+          };
+          quiz.passages.push(passage);
+        }
+
+        const question = {
+          id: `q${passage.questions.length + 1}`,
+          question: row.Question || '',
+          options: [
+            row.Option1 || row.A || '',
+            row.Option2 || row.B || '',
+            row.Option3 || row.C || '',
+            row.Option4 || row.D || ''
+          ].filter(opt => opt),
+          correctAnswer: parseInt(row.CorrectAnswer || row.Answer || '1') - 1,
+          explanation: row.Explanation || ''
+        };
+
+        if (!question.question) {
+          throw new Error(`행 ${index + 1}: 문제가 비어있습니다.`);
+        }
+        if (question.options.length < 2) {
+          throw new Error(`행 ${index + 1}: 최소 2개의 선택지가 필요합니다.`);
+        }
+        if (question.correctAnswer < 0 || question.correctAnswer >= question.options.length) {
+          throw new Error(`행 ${index + 1}: 정답 번호가 유효하지 않습니다.`);
+        }
+
+        passage.questions.push(question);
+      } catch (error) {
+        console.error(`행 ${index + 1} 처리 중 오류:`, error);
+        throw error;
+      }
+    });
+
+    return Array.from(quizMap.values());
+  }
+
+  async uploadCSV() {
+    // 레거시 메서드 - 호환성 유지
+    await this.uploadCSVFile();
   }
 
   setColorMode(mode) {
