@@ -135,11 +135,43 @@ const Storage = {
     this.saveCustomQuizzes(quizzes);
   },
 
+  deleteQuizzesBySubject(subjectId) {
+    const quizzes = this.getCustomQuizzes();
+    const filtered = quizzes.filter(q => q.subject !== subjectId);
+    this.saveCustomQuizzes(filtered);
+  },
+
+  // 커스텀 과목
+  getCustomSubjects() {
+    const saved = localStorage.getItem('quizflow_custom_subjects');
+    return saved ? JSON.parse(saved) : [];
+  },
+
+  saveCustomSubjects(subjects) {
+    localStorage.setItem('quizflow_custom_subjects', JSON.stringify(subjects));
+  },
+
+  addCustomSubject(subject) {
+    const subjects = this.getCustomSubjects();
+    // 중복 체크
+    if (!subjects.some(s => s.id === subject.id)) {
+      subjects.push(subject);
+      this.saveCustomSubjects(subjects);
+    }
+  },
+
+  deleteCustomSubject(subjectId) {
+    const subjects = this.getCustomSubjects();
+    const filtered = subjects.filter(s => s.id !== subjectId);
+    this.saveCustomSubjects(filtered);
+  },
+
   // 데이터 초기화
   clearAll() {
     if (confirm('모든 데이터를 삭제하시겠습니까? (복구 불가능)')) {
       localStorage.removeItem('quizflow_results');
       localStorage.removeItem('quizflow_custom_quizzes');
+      localStorage.removeItem('quizflow_custom_subjects');
       return true;
     }
     return false;
