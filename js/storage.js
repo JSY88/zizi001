@@ -141,6 +141,31 @@ const Storage = {
     this.saveCustomQuizzes(filtered);
   },
 
+  updateQuizTitle(quizId, newTitle) {
+    const quizzes = this.getCustomQuizzes();
+    const quiz = quizzes.find(q => q.id === quizId);
+    if (quiz) {
+      quiz.title = newTitle;
+      this.saveCustomQuizzes(quizzes);
+    }
+  },
+
+  reorderQuizzes(subjectId, draggedId, targetId) {
+    const quizzes = this.getCustomQuizzes();
+    const subjectQuizzes = quizzes.filter(q => q.subject === subjectId);
+    const otherQuizzes = quizzes.filter(q => q.subject !== subjectId);
+
+    const draggedIndex = subjectQuizzes.findIndex(q => q.id === draggedId);
+    const targetIndex = subjectQuizzes.findIndex(q => q.id === targetId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const [draggedQuiz] = subjectQuizzes.splice(draggedIndex, 1);
+    subjectQuizzes.splice(targetIndex, 0, draggedQuiz);
+
+    this.saveCustomQuizzes([...otherQuizzes, ...subjectQuizzes]);
+  },
+
   deleteQuizzesBySubject(subjectId) {
     const quizzes = this.getCustomQuizzes();
     const filtered = quizzes.filter(q => q.subject !== subjectId);
