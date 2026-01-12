@@ -94,528 +94,568 @@
   <div id="app"></div>
   <div id="modal" class="modal"></div>
 
-  <script>
-    // ======================
-    // 1. 데이터 저장소 (DB)
-    // ======================
-    const DB = {
-      data: {
-        folders: JSON.parse(localStorage.getItem('folders')) || [{ id: 'def', name: '기본 폴더' }],
-        quizzes: JSON.parse(localStorage.getItem('quizzes')) || [],
-        results: JSON.parse(localStorage.getItem('results')) || []
-      },
-      save() {
-        localStorage.setItem('folders', JSON.stringify(this.data.folders));
-        localStorage.setItem('quizzes', JSON.stringify(this.data.quizzes));
-        localStorage.setItem('results', JSON.stringify(this.data.results));
-        App.render();
-      },
-      // 특정 퀴즈의 틀린 문제 인덱스 목록 반환 (최신 기록 기준)
-      getWrongIndices(quizId) {
-        // 문제별 마지막 시도 결과만 추출
-        const lastResults = {};
-        this.data.results
-          .filter(r => r.quizId === quizId)
-          .forEach(r => {
-            // 시간순으로 나중 기록이 덮어씀
-            if (!lastResults[r.qId] || lastResults[r.qId].date < r.date) {
-              lastResults[r.qId] = r;
-            }
-          });
-        
-        // 틀린 문제(correct: false)인 qId만 추출
-        return Object.values(lastResults)
-          .filter(r => !r.correct)
-          .map(r => r.qId);
+<script type="module">
+  // 1. Firebase 라이브러리 가져오기 (버전 12.7.0)
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+
+  // 2. 님께서 가져오신 Firebase 설정값 (그대로 적용함)
+  const firebaseConfig = {
+    apiKey: "AIzaSyDdHzcvkQMeJCNo6OZWrr06q1oMH5xvSiI",
+    authDomain: "my-quiz-app-b5e97.firebaseapp.com",
+    projectId: "my-quiz-app-b5e97",
+    storageBucket: "my-quiz-app-b5e97.firebasestorage.app",
+    messagingSenderId: "1095263157286",
+    appId: "1:1095263157286:web:03e507d491423fcb9c3ae7",
+    measurementId: "G-H4NGN70E5S"
+  };
+
+  // 3. 앱 및 데이터베이스 초기화
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // ======================
+  // 4. 데이터 저장소 로직 (DB)
+  // ======================
+  
+  // 사용자 구분 키 (닉네임)
+  let USER_KEY = localStorage.getItem('quiz_user_key');
+  
+  if (!USER_KEY) {
+    USER_KEY = prompt("데이터를 공유할 나만의 닉네임(ID)을 입력하세요.\n(예: myname123)", "guest");
+    if(!USER_KEY) USER_KEY = "guest";
+    localStorage.setItem('quiz_user_key', USER_KEY);
+  }
+
+  // 전역 DB 객체
+  window.DB = {
+    data: {
+      folders: [{ id: 'def', name: '기본 폴더' }],
+      quizzes: [],
+      results: []
+    },
+    
+    // 데이터 불러오기 (앱 시작 시 1회)
+    async load() {
+      try {
+        // Firestore에서 내 닉네임 문서 가져오기
+        const docRef = doc(db, "quiz_users", USER_KEY);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          this.data = docSnap.data();
+          console.log(`[${USER_KEY}] 데이터 로드 완료!`);
+        } else {
+          console.log("새로운 사용자로 시작합니다.");
+          this.save(); // 초기 데이터 생성
+        }
+      } catch (e) {
+        alert("데이터 로드 실패: " + e.message + "\n(혹시 Firebase Console에서 'Firestore Database'를 생성하셨나요?)");
       }
-    };
+    },
 
-    // ======================
-    // 2. 앱 로직 (App)
-    // ======================
-    const App = {
-      state: {
-        view: 'home', // home, list, quiz
-        currentFolderId: null,
-        currentQuiz: null,
-        qIndex: 0,
-        answers: [],
-        reviewMode: false, // 오답 복습 모드
-        selectMode: false, // 퀴즈 선택(병합) 모드
-        selectedQuizIds: [] // 선택된 퀴즈 ID들
-      },
+    // 데이터 저장하기 (변경 시마다)
+    async save() {
+      try {
+        // Firestore에 데이터 덮어쓰기
+        await setDoc(doc(db, "quiz_users", USER_KEY), this.data);
+        // 화면 갱신
+        if(window.App) window.App.render(); 
+      } catch (e) {
+        console.error("저장 실패", e);
+      }
+    },
 
-      // --- 네비게이션 ---
-      goHome() {
-        this.state.view = 'home';
-        this.state.currentFolderId = null;
-        this.state.selectMode = false;
-        this.state.selectedQuizIds = [];
-        this.render();
-      },
-
-      goToList(folderId) {
-        this.state.view = 'list';
-        this.state.currentFolderId = folderId;
-        this.state.selectMode = false;
-        this.state.selectedQuizIds = [];
-        this.render();
-      },
-
-      startQuiz(quizId) {
-        if (this.state.selectMode) return; // 선택 모드일 땐 실행 안함
-
-        const originalQuiz = DB.data.quizzes.find(q => q.id === quizId);
-        if (!originalQuiz) return;
-
-        let targetQuestions = originalQuiz.questions;
-        let isFiltered = false;
-
-        // [기능 1] 오답 복습 모드 체크
-        if (this.state.reviewMode) {
-          const wrongIndices = DB.getWrongIndices(quizId);
-          if (wrongIndices.length === 0) {
-            alert("틀린 기록이 있는 문제가 없습니다! 🎉");
-            return;
+    // 오답 인덱스 추출 함수
+    getWrongIndices(quizId) {
+      const lastResults = {};
+      if(!this.data.results) return [];
+      
+      this.data.results
+        .filter(r => r.quizId === quizId)
+        .forEach(r => {
+          if (!lastResults[r.qId] || lastResults[r.qId].date < r.date) {
+            lastResults[r.qId] = r;
           }
-          // 원본 인덱스를 기억하기 위해 _originalIndex 추가
-          targetQuestions = originalQuiz.questions
-            .map((q, idx) => ({ ...q, _originalIndex: idx }))
-            .filter(q => wrongIndices.includes(q._originalIndex));
-          isFiltered = true;
-        } else {
-          // 일반 모드도 원본 인덱스 추적용 필드 추가
-          targetQuestions = originalQuiz.questions.map((q, idx) => ({ ...q, _originalIndex: idx }));
-        }
-
-        // 퀴즈 객체 복사 생성 (화면 표시용)
-        this.state.currentQuiz = {
-          ...originalQuiz,
-          questions: targetQuestions,
-          isFiltered
-        };
-        this.state.view = 'quiz';
-        this.state.qIndex = 0;
-        this.state.answers = [];
-        this.render();
-      },
-
-      // --- 데이터 조작 (폴더/퀴즈) ---
-      addFolder() {
-        const name = prompt('새 폴더 이름:');
-        if (!name) return;
-        DB.data.folders.push({ id: Date.now().toString(), name });
-        DB.save();
-      },
-
-      renameFolder(e, id) {
-        e.stopPropagation();
-        const folder = DB.data.folders.find(f => f.id === id);
-        const name = prompt('폴더 이름 수정:', folder.name);
-        if (name) { folder.name = name; DB.save(); }
-      },
-
-      deleteFolder(e, id) {
-        e.stopPropagation();
-        if (!confirm('폴더와 내부 퀴즈가 모두 삭제됩니다.')) return;
-        DB.data.folders = DB.data.folders.filter(f => f.id !== id);
-        DB.data.quizzes = DB.data.quizzes.filter(q => q.folderId !== id);
-        DB.save();
-      },
-
-      // [기능 2] 퀴즈 이름 수정
-      renameQuiz(e, quizId) {
-        e.stopPropagation();
-        const quiz = DB.data.quizzes.find(q => q.id === quizId);
-        const name = prompt('퀴즈 제목 수정:', quiz.title);
-        if (name) {
-          quiz.title = name;
-          DB.save();
-        }
-      },
-
-      deleteQuiz(e, id) {
-        e.stopPropagation();
-        if(!confirm('정말 삭제하시겠습니까?')) return;
-        DB.data.quizzes = DB.data.quizzes.filter(q => q.id !== id);
-        DB.save();
-      },
-
-      // --- 병합 및 선택 로직 ---
-      toggleSelectMode() {
-        this.state.selectMode = !this.state.selectMode;
-        this.state.selectedQuizIds = [];
-        this.render();
-      },
-
-      toggleSelection(quizId) {
-        const ids = this.state.selectedQuizIds;
-        if (ids.includes(quizId)) {
-          this.state.selectedQuizIds = ids.filter(id => id !== quizId);
-        } else {
-          this.state.selectedQuizIds.push(quizId);
-        }
-        this.render();
-      },
-
-      // [기능 3] 퀴즈 병합
-      mergeSelectedQuizzes() {
-        const ids = this.state.selectedQuizIds;
-        if (ids.length < 2) { alert('2개 이상의 퀴즈를 선택해주세요.'); return; }
-
-        const newName = prompt('병합된 퀴즈의 새 제목을 입력하세요:', '병합된 퀴즈');
-        if (!newName) return;
-
-        const targetQuizzes = DB.data.quizzes.filter(q => ids.includes(q.id));
-        let mergedQuestions = [];
-        
-        targetQuizzes.forEach(q => {
-          mergedQuestions = [...mergedQuestions, ...q.questions];
         });
+      
+      return Object.values(lastResults)
+        .filter(r => !r.correct)
+        .map(r => r.qId);
+    }
+  };
 
-        const newQuiz = {
-          id: Math.random().toString(36).substr(2, 9),
-          folderId: this.state.currentFolderId,
-          title: newName,
-          questions: mergedQuestions
-        };
+  // ======================
+  // 5. 앱 로직 (App) - 기존 기능 유지
+  // ======================
+  window.App = {
+    state: {
+      view: 'home',
+      currentFolderId: null,
+      currentQuiz: null,
+      qIndex: 0,
+      answers: [],
+      reviewMode: false,
+      selectMode: false,
+      selectedQuizIds: []
+    },
 
-        DB.data.quizzes.push(newQuiz);
-        
-        // (선택사항) 원본 삭제 여부 물어보기
-        if (confirm('병합 후 원본 퀴즈들은 삭제할까요?')) {
-          DB.data.quizzes = DB.data.quizzes.filter(q => !ids.includes(q.id));
+    goHome() {
+      this.state.view = 'home';
+      this.state.currentFolderId = null;
+      this.state.selectMode = false;
+      this.state.selectedQuizIds = [];
+      this.render();
+    },
+
+    goToList(folderId) {
+      this.state.view = 'list';
+      this.state.currentFolderId = folderId;
+      this.state.selectMode = false;
+      this.state.selectedQuizIds = [];
+      this.render();
+    },
+
+    startQuiz(quizId) {
+      if (this.state.selectMode) return;
+      const originalQuiz = window.DB.data.quizzes.find(q => q.id === quizId);
+      if (!originalQuiz) return;
+
+      let targetQuestions = originalQuiz.questions;
+      let isFiltered = false;
+
+      if (this.state.reviewMode) {
+        const wrongIndices = window.DB.getWrongIndices(quizId);
+        if (wrongIndices.length === 0) {
+          alert("틀린 기록이 있는 문제가 없습니다! 🎉");
+          return;
         }
+        targetQuestions = originalQuiz.questions
+          .map((q, idx) => ({ ...q, _originalIndex: idx }))
+          .filter(q => wrongIndices.includes(q._originalIndex));
+        isFiltered = true;
+      } else {
+        targetQuestions = originalQuiz.questions.map((q, idx) => ({ ...q, _originalIndex: idx }));
+      }
 
-        this.state.selectMode = false;
-        this.state.selectedQuizIds = [];
-        DB.save();
-      },
+      this.state.currentQuiz = {
+        ...originalQuiz,
+        questions: targetQuestions,
+        isFiltered
+      };
+      this.state.view = 'quiz';
+      this.state.qIndex = 0;
+      this.state.answers = [];
+      this.render();
+    },
 
-      // --- 모달 관련 ---
-      addQuizModal() {
-        const folders = DB.data.folders;
-        const currentId = this.state.currentFolderId;
-        
-        const modalHtml = `
-          <div class="modal-box">
-            <h2 style="margin-bottom:16px; font-size:18px; font-weight:bold;">퀴즈 추가</h2>
-            
-            <div class="input-group">
-              <label>저장할 폴더</label>
-              <select id="m_folder" class="input-field">
-                ${folders.map(f => `<option value="${f.id}" ${f.id === currentId ? 'selected' : ''}>${f.name}</option>`).join('')}
-              </select>
-            </div>
+    addFolder() {
+      const name = prompt('새 폴더 이름:');
+      if (!name) return;
+      window.DB.data.folders.push({ id: Date.now().toString(), name });
+      window.DB.save();
+    },
 
-            <div class="input-group">
-              <label>제목</label>
-              <input id="m_title" type="text" class="input-field" placeholder="예: 영단어 day1">
-            </div>
+    renameFolder(e, id) {
+      e.stopPropagation();
+      const folder = window.DB.data.folders.find(f => f.id === id);
+      const name = prompt('폴더 이름 수정:', folder.name);
+      if (name) { folder.name = name; window.DB.save(); }
+    },
 
-            <div class="input-group">
-              <label>퀴즈 데이터 (JSON)</label>
-              <textarea id="m_json" class="input-field" style="height:120px; font-family:monospace;" placeholder='[{"q":"질문","options":["A","B"],"correct":0}]'></textarea>
-            </div>
+    deleteFolder(e, id) {
+      e.stopPropagation();
+      if (!confirm('폴더와 내부 퀴즈가 모두 삭제됩니다.')) return;
+      window.DB.data.folders = window.DB.data.folders.filter(f => f.id !== id);
+      window.DB.data.quizzes = window.DB.data.quizzes.filter(q => q.folderId !== id);
+      window.DB.save();
+    },
 
-            <div style="display:flex; gap:8px; margin-top:24px;">
-              <button onclick="document.getElementById('modal').classList.remove('active')" class="btn" style="flex:1">취소</button>
-              <button onclick="App.saveQuizData()" class="btn btn-primary" style="flex:1">저장</button>
-            </div>
+    renameQuiz(e, quizId) {
+      e.stopPropagation();
+      const quiz = window.DB.data.quizzes.find(q => q.id === quizId);
+      const name = prompt('퀴즈 제목 수정:', quiz.title);
+      if (name) { quiz.title = name; window.DB.save(); }
+    },
+
+    deleteQuiz(e, id) {
+      e.stopPropagation();
+      if(!confirm('정말 삭제하시겠습니까?')) return;
+      window.DB.data.quizzes = window.DB.data.quizzes.filter(q => q.id !== id);
+      window.DB.save();
+    },
+
+    toggleSelectMode() {
+      this.state.selectMode = !this.state.selectMode;
+      this.state.selectedQuizIds = [];
+      this.render();
+    },
+
+    toggleSelection(quizId) {
+      const ids = this.state.selectedQuizIds;
+      if (ids.includes(quizId)) {
+        this.state.selectedQuizIds = ids.filter(id => id !== quizId);
+      } else {
+        this.state.selectedQuizIds.push(quizId);
+      }
+      this.render();
+    },
+
+    mergeSelectedQuizzes() {
+      const ids = this.state.selectedQuizIds;
+      if (ids.length < 2) { alert('2개 이상의 퀴즈를 선택해주세요.'); return; }
+
+      const newName = prompt('병합된 퀴즈의 새 제목을 입력하세요:', '병합된 퀴즈');
+      if (!newName) return;
+
+      const targetQuizzes = window.DB.data.quizzes.filter(q => ids.includes(q.id));
+      let mergedQuestions = [];
+      
+      targetQuizzes.forEach(q => {
+        mergedQuestions = [...mergedQuestions, ...q.questions];
+      });
+
+      const newQuiz = {
+        id: Math.random().toString(36).substr(2, 9),
+        folderId: this.state.currentFolderId,
+        title: newName,
+        questions: mergedQuestions
+      };
+
+      window.DB.data.quizzes.push(newQuiz);
+      
+      if (confirm('병합 후 원본 퀴즈들은 삭제할까요?')) {
+        window.DB.data.quizzes = window.DB.data.quizzes.filter(q => !ids.includes(q.id));
+      }
+
+      this.state.selectMode = false;
+      this.state.selectedQuizIds = [];
+      window.DB.save();
+    },
+
+    addQuizModal() {
+      const folders = window.DB.data.folders;
+      const currentId = this.state.currentFolderId;
+      
+      const modalHtml = `
+        <div class="modal-box">
+          <h2 style="margin-bottom:16px; font-size:18px; font-weight:bold;">퀴즈 추가</h2>
+          
+          <div class="input-group">
+            <label>저장할 폴더</label>
+            <select id="m_folder" class="input-field">
+              ${folders.map(f => `<option value="${f.id}" ${f.id === currentId ? 'selected' : ''}>${f.name}</option>`).join('')}
+            </select>
           </div>
-        `;
-        const modal = document.getElementById('modal');
-        modal.innerHTML = modalHtml;
-        modal.classList.add('active');
-      },
 
-      saveQuizData() {
-        try {
-          const folderId = document.getElementById('m_folder').value;
-          const title = document.getElementById('m_title').value.trim();
-          const jsonStr = document.getElementById('m_json').value;
-          const data = JSON.parse(jsonStr);
+          <div class="input-group">
+            <label>제목</label>
+            <input id="m_title" type="text" class="input-field" placeholder="예: 영단어 day1">
+          </div>
 
-          let newQuizzes = [];
-          
-          if (Array.isArray(data) && data[0].questions) {
-             // 여러 퀴즈 객체
-            newQuizzes = data.map(q => ({
-              id: Math.random().toString(36).substr(2, 9),
-              folderId,
-              title: q.title || title || '제목 없음',
-              questions: q.questions
-            }));
-          } else if (Array.isArray(data)) {
-            // 단일 퀴즈 (문제 배열)
-            if (!title) throw new Error("단일 퀴즈는 제목이 필요합니다.");
-            newQuizzes.push({
-              id: Math.random().toString(36).substr(2, 9),
-              folderId,
-              title,
-              questions: data
-            });
-          } else {
-            throw new Error("올바른 형식이 아닙니다.");
-          }
+          <div class="input-group">
+            <label>퀴즈 데이터 (JSON)</label>
+            <textarea id="m_json" class="input-field" style="height:120px; font-family:monospace;" placeholder='[{"q":"질문","options":["A","B"],"correct":0}]'></textarea>
+          </div>
 
-          DB.data.quizzes.push(...newQuizzes);
-          DB.save();
-          document.getElementById('modal').classList.remove('active');
-          
-        } catch (e) {
-          alert('데이터 오류: ' + e.message);
-        }
-      },
+          <div style="display:flex; gap:8px; margin-top:24px;">
+            <button onclick="document.getElementById('modal').classList.remove('active')" class="btn" style="flex:1">취소</button>
+            <button onclick="window.App.saveQuizData()" class="btn btn-primary" style="flex:1">저장</button>
+          </div>
+        </div>
+      `;
+      const modal = document.getElementById('modal');
+      modal.innerHTML = modalHtml;
+      modal.classList.add('active');
+    },
 
-      // --- 퀴즈 진행 ---
-      selectAnswer(idx) {
-        this.state.answers[this.state.qIndex] = idx;
-        this.render();
-      },
+    saveQuizData() {
+      try {
+        const folderId = document.getElementById('m_folder').value;
+        const title = document.getElementById('m_title').value.trim();
+        const jsonStr = document.getElementById('m_json').value;
+        const data = JSON.parse(jsonStr);
 
-      nextQuestion() {
-        const total = this.state.currentQuiz.questions.length;
-        if (this.state.qIndex < total - 1) {
-          this.state.qIndex++;
-          this.render();
-        } else {
-          this.finishQuiz();
-        }
-      },
-
-      finishQuiz() {
-        const quiz = this.state.currentQuiz;
-        const answers = this.state.answers;
-        let correctCnt = 0;
-
-        // 결과 저장 (필터링된 문제의 원본 ID를 추적하여 저장)
-        quiz.questions.forEach((q, i) => {
-          const isCorrect = answers[i] === q.correct;
-          if (isCorrect) correctCnt++;
-          
-          // 오답노트 모드였더라도 원본 퀴즈 ID와 원본 문제 인덱스(_originalIndex)로 기록해야 함
-          // 여기서는 단순화를 위해 q._originalIndex 사용
-          DB.data.results.push({
-            quizId: quiz.id,
-            qId: q._originalIndex, // 원본 문제의 인덱스로 저장
-            correct: isCorrect,
-            date: Date.now()
+        let newQuizzes = [];
+        
+        if (Array.isArray(data) && data[0].questions) {
+          newQuizzes = data.map(q => ({
+            id: Math.random().toString(36).substr(2, 9),
+            folderId,
+            title: q.title || title || '제목 없음',
+            questions: q.questions
+          }));
+        } else if (Array.isArray(data)) {
+          if (!title) throw new Error("단일 퀴즈는 제목이 필요합니다.");
+          newQuizzes.push({
+            id: Math.random().toString(36).substr(2, 9),
+            folderId,
+            title,
+            questions: data
           });
-        });
-        DB.save();
+        } else {
+          throw new Error("올바른 형식이 아닙니다.");
+        }
 
-        alert(`완료! 점수: ${correctCnt} / ${quiz.questions.length}`);
-        this.goToList(quiz.folderId);
-      },
-
-      toggleReviewModeState(e) {
-        this.state.reviewMode = e.target.checked;
-        this.render();
-      },
-
-      // ======================
-      // 3. 화면 렌더링 (View)
-      // ======================
-      render() {
-        const app = document.getElementById('app');
-        const { view } = this.state;
-        if (view === 'home') app.innerHTML = this.viewHome();
-        else if (view === 'list') app.innerHTML = this.viewList();
-        else if (view === 'quiz') app.innerHTML = this.viewQuiz();
-      },
-
-      viewHome() {
-        const folders = DB.data.folders;
-        const quizzes = DB.data.quizzes;
-        const results = DB.data.results;
+        window.DB.data.quizzes.push(...newQuizzes);
+        window.DB.save();
+        document.getElementById('modal').classList.remove('active');
         
-        const totalSolved = results.length;
-        const totalCorrect = results.filter(r => r.correct).length;
-        const accuracy = totalSolved ? Math.round((totalCorrect/totalSolved)*100) : 0;
+      } catch (e) {
+        alert('데이터 오류: ' + e.message);
+      }
+    },
 
-        return `
-          <div class="header" style="flex-direction:column; align-items: flex-start;">
-            <h1 style="font-size:26px; font-weight:800; color:var(--text);">QuizFlow</h1>
-            <p style="color:var(--sub); margin-top:4px;">나만의 스마트 퀴즈 저장소</p>
+    selectAnswer(idx) {
+      this.state.answers[this.state.qIndex] = idx;
+      this.render();
+    },
+
+    nextQuestion() {
+      const total = this.state.currentQuiz.questions.length;
+      if (this.state.qIndex < total - 1) {
+        this.state.qIndex++;
+        this.render();
+      } else {
+        this.finishQuiz();
+      }
+    },
+
+    finishQuiz() {
+      const quiz = this.state.currentQuiz;
+      const answers = this.state.answers;
+      let correctCnt = 0;
+
+      quiz.questions.forEach((q, i) => {
+        const isCorrect = answers[i] === q.correct;
+        if (isCorrect) correctCnt++;
+        
+        window.DB.data.results.push({
+          quizId: quiz.id,
+          qId: q._originalIndex,
+          correct: isCorrect,
+          date: Date.now()
+        });
+      });
+      window.DB.save();
+
+      alert(`완료! 점수: ${correctCnt} / ${quiz.questions.length}`);
+      this.goToList(quiz.folderId);
+    },
+
+    toggleReviewModeState(e) {
+      this.state.reviewMode = e.target.checked;
+      this.render();
+    },
+
+    render() {
+      const app = document.getElementById('app');
+      const { view } = this.state;
+      
+      // DB 로드 전이면 로딩 표시
+      if (!window.DB || !window.DB.data) {
+        app.innerHTML = '<div class="empty-state">데이터 동기화 중...</div>';
+        return;
+      }
+
+      if (view === 'home') app.innerHTML = this.viewHome();
+      else if (view === 'list') app.innerHTML = this.viewList();
+      else if (view === 'quiz') app.innerHTML = this.viewQuiz();
+    },
+
+    viewHome() {
+      const folders = window.DB.data.folders;
+      const quizzes = window.DB.data.quizzes;
+      const results = window.DB.data.results || [];
+      
+      const totalSolved = results.length;
+      const totalCorrect = results.filter(r => r.correct).length;
+      const accuracy = totalSolved ? Math.round((totalCorrect/totalSolved)*100) : 0;
+
+      return `
+        <div class="header" style="flex-direction:column; align-items: flex-start;">
+          <h1 style="font-size:26px; font-weight:800; color:var(--text);">QuizFlow</h1>
+          <p style="color:var(--sub); margin-top:4px;">${USER_KEY}님의 클라우드 저장소 ☁️</p>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-val">${totalSolved}</div>
+            <div class="stat-label">푼 문제</div>
           </div>
-
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-val">${totalSolved}</div>
-              <div class="stat-label">푼 문제</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-val">${totalCorrect}</div>
-              <div class="stat-label">정답</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-val" style="color:${accuracy >= 80 ? '#22c55e' : accuracy >= 50 ? '#eab308' : '#ef4444'}">${accuracy}%</div>
-              <div class="stat-label">정답률</div>
-            </div>
+          <div class="stat-card">
+            <div class="stat-val">${totalCorrect}</div>
+            <div class="stat-label">정답</div>
           </div>
-
-          <div style="display:flex; gap:10px; margin-bottom:24px;">
-            <button onclick="App.addQuizModal()" class="btn btn-primary" style="flex:1; padding:12px;">+ 퀴즈 추가</button>
-            <button onclick="App.addFolder()" class="btn" style="flex:1;">+ 폴더 추가</button>
+          <div class="stat-card">
+            <div class="stat-val" style="color:${accuracy >= 80 ? '#22c55e' : accuracy >= 50 ? '#eab308' : '#ef4444'}">${accuracy}%</div>
+            <div class="stat-label">정답률</div>
           </div>
+        </div>
 
-          <div class="list-container">
-            ${folders.length === 0 ? '<div class="empty-state">폴더를 추가해주세요</div>' : ''}
-            ${folders.map(f => {
-              const count = quizzes.filter(q => q.folderId === f.id).length;
-              return `
-                <div class="list-item" onclick="App.goToList('${f.id}')">
-                  <div class="item-info">
-                    <h3>📁 ${f.name}</h3>
-                    <p>퀴즈 ${count}개</p>
-                  </div>
-                  <div class="item-actions">
-                    <button onclick="App.renameFolder(event, '${f.id}')" class="btn-icon">✎</button>
-                    <button onclick="App.deleteFolder(event, '${f.id}')" class="btn-icon">🗑</button>
-                  </div>
+        <div style="display:flex; gap:10px; margin-bottom:24px;">
+          <button onclick="window.App.addQuizModal()" class="btn btn-primary" style="flex:1; padding:12px;">+ 퀴즈 추가</button>
+          <button onclick="window.App.addFolder()" class="btn" style="flex:1;">+ 폴더 추가</button>
+        </div>
+
+        <div class="list-container">
+          ${folders.length === 0 ? '<div class="empty-state">폴더를 추가해주세요</div>' : ''}
+          ${folders.map(f => {
+            const count = quizzes.filter(q => q.folderId === f.id).length;
+            return `
+              <div class="list-item" onclick="window.App.goToList('${f.id}')">
+                <div class="item-info">
+                  <h3>📁 ${f.name}</h3>
+                  <p>퀴즈 ${count}개</p>
                 </div>
-              `;
-            }).join('')}
-          </div>
-        `;
-      },
+                <div class="item-actions">
+                  <button onclick="window.App.renameFolder(event, '${f.id}')" class="btn-icon">✎</button>
+                  <button onclick="window.App.deleteFolder(event, '${f.id}')" class="btn-icon">🗑</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    },
 
-      viewList() {
-        const fId = this.state.currentFolderId;
-        const folder = DB.data.folders.find(f => f.id === fId);
-        const folderQuizzes = DB.data.quizzes.filter(q => q.folderId === fId);
-        const { reviewMode, selectMode, selectedQuizIds } = this.state;
+    viewList() {
+      const fId = this.state.currentFolderId;
+      const folder = window.DB.data.folders.find(f => f.id === fId);
+      const folderQuizzes = window.DB.data.quizzes.filter(q => q.folderId === fId);
+      const { reviewMode, selectMode, selectedQuizIds } = this.state;
 
-        if (!folder) { this.goHome(); return ''; }
+      if (!folder) { this.goHome(); return ''; }
 
-        return `
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <button onclick="App.goHome()" class="btn">← 목록</button>
-            
-            ${folderQuizzes.length > 0 ? `
-              <button onclick="App.toggleSelectMode()" class="btn ${selectMode ? 'btn-primary' : ''}">
-                ${selectMode ? '완료' : '선택'}
-              </button>
-            ` : ''}
-          </div>
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <button onclick="window.App.goHome()" class="btn">← 목록</button>
           
-          <div class="header" style="align-items:flex-end;">
-            <div>
-              <h1 style="font-size:22px; font-weight:800;">${folder.name}</h1>
-              <p style="color:var(--sub); font-size:14px;">총 ${folderQuizzes.length}개의 퀴즈</p>
-            </div>
-
-            ${!selectMode ? `
-              <div style="text-align:right;">
-                <input type="checkbox" id="reviewToggle" class="toggle-input" ${reviewMode ? 'checked' : ''} onchange="App.toggleReviewModeState(event)">
-                <label for="reviewToggle" class="toggle-wrapper">
-                  <span class="toggle-label" style="font-size:12px;">오답 복습</span>
-                  <div class="toggle-switch"></div>
-                </label>
-              </div>
-            ` : ''}
+          ${folderQuizzes.length > 0 ? `
+            <button onclick="window.App.toggleSelectMode()" class="btn ${selectMode ? 'btn-primary' : ''}">
+              ${selectMode ? '완료' : '선택'}
+            </button>
+          ` : ''}
+        </div>
+        
+        <div class="header" style="align-items:flex-end;">
+          <div>
+            <h1 style="font-size:22px; font-weight:800;">${folder.name}</h1>
+            <p style="color:var(--sub); font-size:14px;">총 ${folderQuizzes.length}개의 퀴즈</p>
           </div>
 
-          ${folderQuizzes.length === 0 ? '<div class="empty-state">등록된 퀴즈가 없습니다.</div>' : ''}
+           ${!selectMode ? `
+            <div style="text-align:right;">
+              <input type="checkbox" id="reviewToggle" class="toggle-input" ${reviewMode ? 'checked' : ''} onchange="window.App.toggleReviewModeState(event)">
+              <label for="reviewToggle" class="toggle-wrapper">
+                <span class="toggle-label" style="font-size:12px;">오답 복습</span>
+                <div class="toggle-switch"></div>
+              </label>
+            </div>
+          ` : ''}
+        </div>
 
-          <div class="list-container">
-            ${folderQuizzes.map(q => {
-              const isSelected = selectedQuizIds.includes(q.id);
-              return `
-                <div class="list-item ${selectMode && isSelected ? 'selected' : ''}" 
-                     onclick="${selectMode ? `App.toggleSelection('${q.id}')` : `App.startQuiz('${q.id}')`}">
-                  
-                  ${selectMode ? `<div class="select-check"></div>` : ''}
-                  
-                  <div class="item-info">
-                    <h3>📝 ${q.title}</h3>
-                    <p>문제 ${q.questions.length}개 ${reviewMode ? '<span style="color:var(--danger); font-size:11px;">(오답 우선)</span>' : ''}</p>
-                  </div>
-                  
-                  ${!selectMode ? `
-                  <div class="item-actions" onclick="event.stopPropagation()">
-                    <button onclick="App.renameQuiz(event, '${q.id}')" class="btn-icon">✎</button>
-                    <button onclick="App.deleteQuiz(event, '${q.id}')" class="btn-icon">🗑</button>
-                  </div>
-                  ` : ''}
+        ${folderQuizzes.length === 0 ? '<div class="empty-state">등록된 퀴즈가 없습니다.</div>' : ''}
+
+        <div class="list-container">
+          ${folderQuizzes.map(q => {
+            const isSelected = selectedQuizIds.includes(q.id);
+            return `
+              <div class="list-item ${selectMode && isSelected ? 'selected' : ''}" 
+                   onclick="${selectMode ? `window.App.toggleSelection('${q.id}')` : `window.App.startQuiz('${q.id}')`}">
+                
+                ${selectMode ? `<div class="select-check"></div>` : ''}
+                
+                <div class="item-info">
+                  <h3>📝 ${q.title}</h3>
+                  <p>문제 ${q.questions.length}개 ${reviewMode ? '<span style="color:var(--danger); font-size:11px;">(오답 우선)</span>' : ''}</p>
                 </div>
-              `;
-            }).join('')}
+                
+                ${!selectMode ? `
+                <div class="item-actions" onclick="event.stopPropagation()">
+                  <button onclick="window.App.renameQuiz(event, '${q.id}')" class="btn-icon">✎</button>
+                  <button onclick="window.App.deleteQuiz(event, '${q.id}')" class="btn-icon">🗑</button>
+                </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div class="bottom-bar ${selectMode && selectedQuizIds.length > 0 ? 'active' : ''}">
+          <span style="font-weight:600;">${selectedQuizIds.length}개 선택됨</span>
+          <button onclick="window.App.mergeSelectedQuizzes()" class="btn btn-primary" style="border:none;">병합하기</button>
+        </div>
+      `;
+    },
+
+    viewQuiz() {
+      const quiz = this.state.currentQuiz;
+      const idx = this.state.qIndex;
+      const question = quiz.questions[idx];
+      const userAnswer = this.state.answers[idx];
+      const isAnswered = userAnswer !== undefined;
+      const progress = ((idx + 1) / quiz.questions.length) * 100;
+
+      return `
+        <div style="max-width:500px; margin:0 auto;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:12px; align-items:center;">
+            <button onclick="window.App.goToList('${quiz.folderId}')" class="btn">✕</button>
+            <div style="font-weight:700; color:var(--primary);">
+              ${quiz.isFiltered ? '🔥 오답 복습 중' : quiz.title}
+            </div>
           </div>
 
-          <div class="bottom-bar ${selectMode && selectedQuizIds.length > 0 ? 'active' : ''}">
-            <span style="font-weight:600;">${selectedQuizIds.length}개 선택됨</span>
-            <button onclick="App.mergeSelectedQuizzes()" class="btn btn-primary" style="border:none;">병합하기</button>
+          <div style="height:6px; background:#e2e8f0; border-radius:3px; margin-bottom:20px; overflow:hidden;">
+            <div style="height:100%; background:var(--primary); width:${progress}%; transition:width 0.3s;"></div>
           </div>
-        `;
-      },
 
-      viewQuiz() {
-        const quiz = this.state.currentQuiz;
-        const idx = this.state.qIndex;
-        const question = quiz.questions[idx];
-        const userAnswer = this.state.answers[idx];
-        const isAnswered = userAnswer !== undefined;
-
-        // 진행률 바
-        const progress = ((idx + 1) / quiz.questions.length) * 100;
-
-        return `
-          <div style="max-width:500px; margin:0 auto;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:12px; align-items:center;">
-              <button onclick="App.goToList('${quiz.folderId}')" class="btn">✕</button>
-              <div style="font-weight:700; color:var(--primary);">
-                ${quiz.isFiltered ? '🔥 오답 복습 중' : quiz.title}
-              </div>
-            </div>
-
-            <div style="height:6px; background:#e2e8f0; border-radius:3px; margin-bottom:20px; overflow:hidden;">
-              <div style="height:100%; background:var(--primary); width:${progress}%; transition:width 0.3s;"></div>
-            </div>
-
-            <div class="quiz-card">
-              <span class="question-badge">Question ${idx + 1} / ${quiz.questions.length}</span>
-              <h2 class="question-text">${question.q}</h2>
-              
-              <div style="display:flex; flex-direction:column; gap:8px;">
-                ${question.options.map((opt, i) => {
-                  let statusClass = '';
-                  if (isAnswered) {
-                    if (i === question.correct) statusClass = 'correct';
-                    else if (i === userAnswer) statusClass = 'wrong';
-                  }
-                  return `
-                    <button 
-                      onclick="${!isAnswered ? `App.selectAnswer(${i})` : ''}" 
-                      class="option-btn ${statusClass}"
-                      ${isAnswered ? 'disabled' : ''}
-                    >
-                      ${opt}
-                    </button>
-                  `;
-                }).join('')}
-              </div>
-
-              ${isAnswered ? `
-                <div style="margin-top:24px; padding-top:20px; border-top:1px solid #e2e8f0; animation: fadeIn 0.3s;">
-                  <p style="margin-bottom:12px; font-weight:800; font-size:18px; color:${userAnswer === question.correct ? '#15803d' : '#b91c1c'};">
-                    ${userAnswer === question.correct ? '🎉 정답!' : '🤔 아쉽네요.'}
-                  </p>
-                  ${question.explanation ? `<div style="font-size:14px; color:#475569; background:#f1f5f9; padding:12px; border-radius:8px; line-height:1.6;">💡 ${question.explanation}</div>` : ''}
-                  <button onclick="App.nextQuestion()" class="btn btn-primary" style="width:100%; margin-top:16px; padding:14px; font-size:16px;">
-                    ${idx < quiz.questions.length - 1 ? '다음 문제' : '결과 보기'}
+          <div class="quiz-card">
+            <span class="question-badge">Question ${idx + 1} / ${quiz.questions.length}</span>
+            <h2 class="question-text">${question.q}</h2>
+            
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              ${question.options.map((opt, i) => {
+                let statusClass = '';
+                if (isAnswered) {
+                  if (i === question.correct) statusClass = 'correct';
+                  else if (i === userAnswer) statusClass = 'wrong';
+                }
+                return `
+                  <button 
+                    onclick="${!isAnswered ? `window.App.selectAnswer(${i})` : ''}" 
+                    class="option-btn ${statusClass}"
+                    ${isAnswered ? 'disabled' : ''}
+                  >
+                    ${opt}
                   </button>
-                </div>
-              ` : ''}
+                `;
+              }).join('')}
             </div>
-          </div>
-          <style>@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }</style>
-        `;
-      }
-    };
 
-    document.addEventListener('DOMContentLoaded', () => App.render());
-  </script>
+            ${isAnswered ? `
+              <div style="margin-top:24px; padding-top:20px; border-top:1px solid #e2e8f0; animation: fadeIn 0.3s;">
+                <p style="margin-bottom:12px; font-weight:800; font-size:18px; color:${userAnswer === question.correct ? '#15803d' : '#b91c1c'};">
+                  ${userAnswer === question.correct ? '🎉 정답!' : '🤔 아쉽네요.'}
+                </p>
+                ${question.explanation ? `<div style="font-size:14px; color:#475569; background:#f1f5f9; padding:12px; border-radius:8px; line-height:1.6;">💡 ${question.explanation}</div>` : ''}
+                <button onclick="window.App.nextQuestion()" class="btn btn-primary" style="width:100%; margin-top:16px; padding:14px; font-size:16px;">
+                  ${idx < quiz.questions.length - 1 ? '다음 문제' : '결과 보기'}
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        <style>@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }</style>
+      `;
+    }
+  };
+
+  // 앱 실행
+  window.addEventListener('DOMContentLoaded', async () => {
+    await window.DB.load();
+    window.App.render();
+  });
+</script>
 </body>
 </html>
