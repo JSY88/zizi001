@@ -1,172 +1,621 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuizFlow - 학습 퀴즈 플랫폼</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* 기본 흑백 모드 */
-        :root {
-            --bg-primary: #ffffff;
-            --bg-secondary: #f5f5f5;
-            --bg-tertiary: #e5e5e5;
-            --text-primary: #000000;
-            --text-secondary: #4a4a4a;
-            --text-tertiary: #6b6b6b;
-            --border-color: #d1d1d1;
-            --accent-primary: #333333;
-            --accent-secondary: #666666;
-            --success-bg: #f0f0f0;
-            --success-text: #2d2d2d;
-            --error-bg: #e8e8e8;
-            --error-text: #1a1a1a;
-            --info-bg: #f5f5f5;
-            --info-text: #333333;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuizFlow - Smart Review</title>
+  <style>
+    :root { --primary: #2563eb; --danger: #ef4444; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --sub: #64748b; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+    
+    body { background: var(--bg); color: var(--text); padding: 20px; max-width: 600px; margin: 0 auto; line-height: 1.5; padding-bottom: 80px; }
+    
+    /* 버튼 공통 */
+    .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+    .btn:hover { background: #f1f5f9; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-icon { padding: 8px; color: var(--sub); border: none; background: transparent; border-radius: 50%; }
+    .btn-icon:hover { color: var(--text); background: #f1f5f9; }
+    .btn-sm { padding: 4px 8px; font-size: 12px; }
 
-        /* 컬러 모드 */
-        [data-color-mode="color"] {
-            --bg-primary: #ffffff;
-            --bg-secondary: #eff6ff;
-            --bg-tertiary: #dbeafe;
-            --text-primary: #1e293b;
-            --text-secondary: #334155;
-            --text-tertiary: #64748b;
-            --border-color: #cbd5e1;
-            --accent-primary: #3b82f6;
-            --accent-secondary: #8b5cf6;
-            --success-bg: #dcfce7;
-            --success-text: #166534;
-            --error-bg: #fee2e2;
-            --error-text: #991b1b;
-            --info-bg: #dbeafe;
-            --info-text: #1e40af;
-        }
+    /* 토글 스위치 (오답 노트) */
+    .toggle-wrapper { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+    .toggle-switch { position: relative; width: 44px; height: 24px; background: #cbd5e1; border-radius: 12px; transition: 0.3s; }
+    .toggle-switch::after { content: ''; position: absolute; left: 2px; top: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: 0.3s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    .toggle-input:checked + .toggle-wrapper .toggle-switch { background: var(--danger); }
+    .toggle-input:checked + .toggle-wrapper .toggle-switch::after { transform: translateX(20px); }
+    .toggle-input { display: none; }
+    .toggle-label { font-size: 14px; font-weight: 600; color: var(--sub); }
+    .toggle-input:checked + .toggle-wrapper .toggle-label { color: var(--danger); }
 
-        body {
-            background-color: var(--bg-secondary);
-            color: var(--text-primary);
-        }
+    /* 헤더 & 통계 */
+    .header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--card); padding: 16px; border-radius: 12px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .stat-val { font-size: 24px; font-weight: 800; color: var(--primary); margin-bottom: 4px; }
+    .stat-label { font-size: 12px; color: var(--sub); font-weight: 500; }
 
-        .bg-card {
-            background-color: var(--bg-primary);
-            border: 1px solid var(--border-color);
-        }
+    /* 리스트 아이템 */
+    .list-container { display: flex; flex-direction: column; gap: 12px; }
+    .list-item { 
+      background: var(--card); border-radius: 12px; padding: 16px; 
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; 
+      display: flex; align-items: center; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+    }
+    .list-item:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    .list-item.selected { border-color: var(--primary); background: #eff6ff; }
+    
+    /* 선택 모드 체크박스 */
+    .select-check { margin-right: 12px; width: 20px; height: 20px; border: 2px solid #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: 0.2s; flex-shrink: 0; }
+    .list-item.selected .select-check { background: var(--primary); border-color: var(--primary); }
+    .list-item.selected .select-check::after { content: '✔'; color: white; font-size: 12px; }
 
-        .bg-accent {
-            background-color: var(--accent-primary);
-            color: var(--bg-primary);
-        }
+    .item-info { flex: 1; min-width: 0; } /* min-width for text truncation */
+    .item-info h3 { font-size: 16px; margin-bottom: 4px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-info p { font-size: 13px; color: var(--sub); }
+    .item-actions { display: flex; gap: 4px; align-items: center; }
 
-        .bg-accent:hover {
-            background-color: var(--accent-secondary);
-        }
+    /* 문제 풀기 화면 */
+    .quiz-card { background: var(--card); padding: 24px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); margin-top: 10px; }
+    .question-badge { display: inline-block; padding: 4px 12px; background: #f1f5f9; color: var(--sub); font-size: 12px; font-weight: 600; border-radius: 20px; margin-bottom: 12px; }
+    .question-text { font-size: 19px; font-weight: 700; margin-bottom: 24px; line-height: 1.4; color: var(--text); }
+    .option-btn { 
+      display: block; width: 100%; text-align: left; padding: 16px; margin-bottom: 10px; 
+      border: 2px solid #e2e8f0; border-radius: 10px; background: white; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.2s;
+    }
+    .option-btn:hover { border-color: var(--primary); background: #f8fafc; }
+    .option-btn:active { transform: scale(0.98); }
+    .option-btn.correct { background: #dcfce7; border-color: #22c55e; color: #15803d; }
+    .option-btn.wrong { background: #fee2e2; border-color: var(--danger); color: #b91c1c; }
 
-        .bg-success {
-            background-color: var(--success-bg);
-            color: var(--success-text);
-            border: 1px solid var(--border-color);
-        }
+    /* 하단 플로팅 바 (병합용) */
+    .bottom-bar { 
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(150%); 
+      background: var(--text); color: white; padding: 12px 24px; border-radius: 50px; 
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3); display: flex; gap: 16px; align-items: center; z-index: 50; transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+    }
+    .bottom-bar.active { transform: translateX(-50%) translateY(0); }
 
-        .bg-error {
-            background-color: var(--error-bg);
-            color: var(--error-text);
-            border: 1px solid var(--border-color);
-        }
-
-        .bg-info {
-            background-color: var(--info-bg);
-            color: var(--info-text);
-            border: 1px solid var(--border-color);
-        }
-
-        .text-secondary {
-            color: var(--text-secondary);
-        }
-
-        .text-tertiary {
-            color: var(--text-tertiary);
-        }
-
-        .border-custom {
-            border-color: var(--border-color);
-        }
-
-        .btn {
-            padding: 0.75rem 1.5rem;
-            border-radius: 0.5rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: 1px solid var(--border-color);
-        }
-
-        .btn-primary {
-            background-color: var(--accent-primary);
-            color: var(--bg-primary);
-            border-color: var(--accent-primary);
-        }
-
-        .btn-primary:hover {
-            background-color: var(--accent-secondary);
-        }
-
-        .btn-secondary {
-            background-color: var(--bg-tertiary);
-            color: var(--text-primary);
-        }
-
-        .btn-secondary:hover {
-            background-color: var(--border-color);
-        }
-
-        .option-btn {
-            border: 2px solid var(--border-color);
-            background-color: var(--bg-primary);
-        }
-
-        .option-btn:hover:not(:disabled) {
-            border-color: var(--accent-primary);
-        }
-
-        .option-btn.selected {
-            border-color: var(--accent-primary);
-            background-color: var(--bg-tertiary);
-        }
-
-        .option-btn.correct {
-            border-color: var(--success-text);
-            background-color: var(--success-bg);
-        }
-
-        .option-btn.wrong {
-            border-color: var(--error-text);
-            background-color: var(--error-bg);
-        }
-
-        .progress-bar {
-            background-color: var(--bg-tertiary);
-            height: 0.5rem;
-            border-radius: 9999px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            background-color: var(--accent-primary);
-            height: 100%;
-            transition: width 0.3s;
-        }
-    </style>
+    /* 모달 */
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(2px); }
+    .modal.active { display: flex; }
+    .modal-box { background: white; padding: 24px; border-radius: 16px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    .input-group { margin-bottom: 16px; }
+    .input-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+    .input-field { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; transition: 0.2s; }
+    .input-field:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+    
+    .empty-state { text-align: center; padding: 60px 0; color: #94a3b8; }
+  </style>
 </head>
 <body>
-    <div id="app" class="min-h-screen p-4 py-8"></div>
+  <div id="app"></div>
+  <div id="modal" class="modal"></div>
 
-    <script src="js/data.js"></script>
-    <script src="js/storage.js"></script>
-    <script src="js/csvParser.js"></script>
-    <script src="js/review.js"></script>
-    <script src="js/quiz.js"></script>
-    <script src="js/app.js"></script>
+  <script>
+    // ======================
+    // 1. 데이터 저장소 (DB)
+    // ======================
+    const DB = {
+      data: {
+        folders: JSON.parse(localStorage.getItem('folders')) || [{ id: 'def', name: '기본 폴더' }],
+        quizzes: JSON.parse(localStorage.getItem('quizzes')) || [],
+        results: JSON.parse(localStorage.getItem('results')) || []
+      },
+      save() {
+        localStorage.setItem('folders', JSON.stringify(this.data.folders));
+        localStorage.setItem('quizzes', JSON.stringify(this.data.quizzes));
+        localStorage.setItem('results', JSON.stringify(this.data.results));
+        App.render();
+      },
+      // 특정 퀴즈의 틀린 문제 인덱스 목록 반환 (최신 기록 기준)
+      getWrongIndices(quizId) {
+        // 문제별 마지막 시도 결과만 추출
+        const lastResults = {};
+        this.data.results
+          .filter(r => r.quizId === quizId)
+          .forEach(r => {
+            // 시간순으로 나중 기록이 덮어씀
+            if (!lastResults[r.qId] || lastResults[r.qId].date < r.date) {
+              lastResults[r.qId] = r;
+            }
+          });
+        
+        // 틀린 문제(correct: false)인 qId만 추출
+        return Object.values(lastResults)
+          .filter(r => !r.correct)
+          .map(r => r.qId);
+      }
+    };
+
+    // ======================
+    // 2. 앱 로직 (App)
+    // ======================
+    const App = {
+      state: {
+        view: 'home', // home, list, quiz
+        currentFolderId: null,
+        currentQuiz: null,
+        qIndex: 0,
+        answers: [],
+        reviewMode: false, // 오답 복습 모드
+        selectMode: false, // 퀴즈 선택(병합) 모드
+        selectedQuizIds: [] // 선택된 퀴즈 ID들
+      },
+
+      // --- 네비게이션 ---
+      goHome() {
+        this.state.view = 'home';
+        this.state.currentFolderId = null;
+        this.state.selectMode = false;
+        this.state.selectedQuizIds = [];
+        this.render();
+      },
+
+      goToList(folderId) {
+        this.state.view = 'list';
+        this.state.currentFolderId = folderId;
+        this.state.selectMode = false;
+        this.state.selectedQuizIds = [];
+        this.render();
+      },
+
+      startQuiz(quizId) {
+        if (this.state.selectMode) return; // 선택 모드일 땐 실행 안함
+
+        const originalQuiz = DB.data.quizzes.find(q => q.id === quizId);
+        if (!originalQuiz) return;
+
+        let targetQuestions = originalQuiz.questions;
+        let isFiltered = false;
+
+        // [기능 1] 오답 복습 모드 체크
+        if (this.state.reviewMode) {
+          const wrongIndices = DB.getWrongIndices(quizId);
+          if (wrongIndices.length === 0) {
+            alert("틀린 기록이 있는 문제가 없습니다! 🎉");
+            return;
+          }
+          // 원본 인덱스를 기억하기 위해 _originalIndex 추가
+          targetQuestions = originalQuiz.questions
+            .map((q, idx) => ({ ...q, _originalIndex: idx }))
+            .filter(q => wrongIndices.includes(q._originalIndex));
+          isFiltered = true;
+        } else {
+          // 일반 모드도 원본 인덱스 추적용 필드 추가
+          targetQuestions = originalQuiz.questions.map((q, idx) => ({ ...q, _originalIndex: idx }));
+        }
+
+        // 퀴즈 객체 복사 생성 (화면 표시용)
+        this.state.currentQuiz = {
+          ...originalQuiz,
+          questions: targetQuestions,
+          isFiltered
+        };
+        this.state.view = 'quiz';
+        this.state.qIndex = 0;
+        this.state.answers = [];
+        this.render();
+      },
+
+      // --- 데이터 조작 (폴더/퀴즈) ---
+      addFolder() {
+        const name = prompt('새 폴더 이름:');
+        if (!name) return;
+        DB.data.folders.push({ id: Date.now().toString(), name });
+        DB.save();
+      },
+
+      renameFolder(e, id) {
+        e.stopPropagation();
+        const folder = DB.data.folders.find(f => f.id === id);
+        const name = prompt('폴더 이름 수정:', folder.name);
+        if (name) { folder.name = name; DB.save(); }
+      },
+
+      deleteFolder(e, id) {
+        e.stopPropagation();
+        if (!confirm('폴더와 내부 퀴즈가 모두 삭제됩니다.')) return;
+        DB.data.folders = DB.data.folders.filter(f => f.id !== id);
+        DB.data.quizzes = DB.data.quizzes.filter(q => q.folderId !== id);
+        DB.save();
+      },
+
+      // [기능 2] 퀴즈 이름 수정
+      renameQuiz(e, quizId) {
+        e.stopPropagation();
+        const quiz = DB.data.quizzes.find(q => q.id === quizId);
+        const name = prompt('퀴즈 제목 수정:', quiz.title);
+        if (name) {
+          quiz.title = name;
+          DB.save();
+        }
+      },
+
+      deleteQuiz(e, id) {
+        e.stopPropagation();
+        if(!confirm('정말 삭제하시겠습니까?')) return;
+        DB.data.quizzes = DB.data.quizzes.filter(q => q.id !== id);
+        DB.save();
+      },
+
+      // --- 병합 및 선택 로직 ---
+      toggleSelectMode() {
+        this.state.selectMode = !this.state.selectMode;
+        this.state.selectedQuizIds = [];
+        this.render();
+      },
+
+      toggleSelection(quizId) {
+        const ids = this.state.selectedQuizIds;
+        if (ids.includes(quizId)) {
+          this.state.selectedQuizIds = ids.filter(id => id !== quizId);
+        } else {
+          this.state.selectedQuizIds.push(quizId);
+        }
+        this.render();
+      },
+
+      // [기능 3] 퀴즈 병합
+      mergeSelectedQuizzes() {
+        const ids = this.state.selectedQuizIds;
+        if (ids.length < 2) { alert('2개 이상의 퀴즈를 선택해주세요.'); return; }
+
+        const newName = prompt('병합된 퀴즈의 새 제목을 입력하세요:', '병합된 퀴즈');
+        if (!newName) return;
+
+        const targetQuizzes = DB.data.quizzes.filter(q => ids.includes(q.id));
+        let mergedQuestions = [];
+        
+        targetQuizzes.forEach(q => {
+          mergedQuestions = [...mergedQuestions, ...q.questions];
+        });
+
+        const newQuiz = {
+          id: Math.random().toString(36).substr(2, 9),
+          folderId: this.state.currentFolderId,
+          title: newName,
+          questions: mergedQuestions
+        };
+
+        DB.data.quizzes.push(newQuiz);
+        
+        // (선택사항) 원본 삭제 여부 물어보기
+        if (confirm('병합 후 원본 퀴즈들은 삭제할까요?')) {
+          DB.data.quizzes = DB.data.quizzes.filter(q => !ids.includes(q.id));
+        }
+
+        this.state.selectMode = false;
+        this.state.selectedQuizIds = [];
+        DB.save();
+      },
+
+      // --- 모달 관련 ---
+      addQuizModal() {
+        const folders = DB.data.folders;
+        const currentId = this.state.currentFolderId;
+        
+        const modalHtml = `
+          <div class="modal-box">
+            <h2 style="margin-bottom:16px; font-size:18px; font-weight:bold;">퀴즈 추가</h2>
+            
+            <div class="input-group">
+              <label>저장할 폴더</label>
+              <select id="m_folder" class="input-field">
+                ${folders.map(f => `<option value="${f.id}" ${f.id === currentId ? 'selected' : ''}>${f.name}</option>`).join('')}
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label>제목</label>
+              <input id="m_title" type="text" class="input-field" placeholder="예: 영단어 day1">
+            </div>
+
+            <div class="input-group">
+              <label>퀴즈 데이터 (JSON)</label>
+              <textarea id="m_json" class="input-field" style="height:120px; font-family:monospace;" placeholder='[{"q":"질문","options":["A","B"],"correct":0}]'></textarea>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-top:24px;">
+              <button onclick="document.getElementById('modal').classList.remove('active')" class="btn" style="flex:1">취소</button>
+              <button onclick="App.saveQuizData()" class="btn btn-primary" style="flex:1">저장</button>
+            </div>
+          </div>
+        `;
+        const modal = document.getElementById('modal');
+        modal.innerHTML = modalHtml;
+        modal.classList.add('active');
+      },
+
+      saveQuizData() {
+        try {
+          const folderId = document.getElementById('m_folder').value;
+          const title = document.getElementById('m_title').value.trim();
+          const jsonStr = document.getElementById('m_json').value;
+          const data = JSON.parse(jsonStr);
+
+          let newQuizzes = [];
+          
+          if (Array.isArray(data) && data[0].questions) {
+             // 여러 퀴즈 객체
+            newQuizzes = data.map(q => ({
+              id: Math.random().toString(36).substr(2, 9),
+              folderId,
+              title: q.title || title || '제목 없음',
+              questions: q.questions
+            }));
+          } else if (Array.isArray(data)) {
+            // 단일 퀴즈 (문제 배열)
+            if (!title) throw new Error("단일 퀴즈는 제목이 필요합니다.");
+            newQuizzes.push({
+              id: Math.random().toString(36).substr(2, 9),
+              folderId,
+              title,
+              questions: data
+            });
+          } else {
+            throw new Error("올바른 형식이 아닙니다.");
+          }
+
+          DB.data.quizzes.push(...newQuizzes);
+          DB.save();
+          document.getElementById('modal').classList.remove('active');
+          
+        } catch (e) {
+          alert('데이터 오류: ' + e.message);
+        }
+      },
+
+      // --- 퀴즈 진행 ---
+      selectAnswer(idx) {
+        this.state.answers[this.state.qIndex] = idx;
+        this.render();
+      },
+
+      nextQuestion() {
+        const total = this.state.currentQuiz.questions.length;
+        if (this.state.qIndex < total - 1) {
+          this.state.qIndex++;
+          this.render();
+        } else {
+          this.finishQuiz();
+        }
+      },
+
+      finishQuiz() {
+        const quiz = this.state.currentQuiz;
+        const answers = this.state.answers;
+        let correctCnt = 0;
+
+        // 결과 저장 (필터링된 문제의 원본 ID를 추적하여 저장)
+        quiz.questions.forEach((q, i) => {
+          const isCorrect = answers[i] === q.correct;
+          if (isCorrect) correctCnt++;
+          
+          // 오답노트 모드였더라도 원본 퀴즈 ID와 원본 문제 인덱스(_originalIndex)로 기록해야 함
+          // 여기서는 단순화를 위해 q._originalIndex 사용
+          DB.data.results.push({
+            quizId: quiz.id,
+            qId: q._originalIndex, // 원본 문제의 인덱스로 저장
+            correct: isCorrect,
+            date: Date.now()
+          });
+        });
+        DB.save();
+
+        alert(`완료! 점수: ${correctCnt} / ${quiz.questions.length}`);
+        this.goToList(quiz.folderId);
+      },
+
+      toggleReviewModeState(e) {
+        this.state.reviewMode = e.target.checked;
+        this.render();
+      },
+
+      // ======================
+      // 3. 화면 렌더링 (View)
+      // ======================
+      render() {
+        const app = document.getElementById('app');
+        const { view } = this.state;
+        if (view === 'home') app.innerHTML = this.viewHome();
+        else if (view === 'list') app.innerHTML = this.viewList();
+        else if (view === 'quiz') app.innerHTML = this.viewQuiz();
+      },
+
+      viewHome() {
+        const folders = DB.data.folders;
+        const quizzes = DB.data.quizzes;
+        const results = DB.data.results;
+        
+        const totalSolved = results.length;
+        const totalCorrect = results.filter(r => r.correct).length;
+        const accuracy = totalSolved ? Math.round((totalCorrect/totalSolved)*100) : 0;
+
+        return `
+          <div class="header" style="flex-direction:column; align-items: flex-start;">
+            <h1 style="font-size:26px; font-weight:800; color:var(--text);">QuizFlow</h1>
+            <p style="color:var(--sub); margin-top:4px;">나만의 스마트 퀴즈 저장소</p>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-val">${totalSolved}</div>
+              <div class="stat-label">푼 문제</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val">${totalCorrect}</div>
+              <div class="stat-label">정답</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val" style="color:${accuracy >= 80 ? '#22c55e' : accuracy >= 50 ? '#eab308' : '#ef4444'}">${accuracy}%</div>
+              <div class="stat-label">정답률</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-bottom:24px;">
+            <button onclick="App.addQuizModal()" class="btn btn-primary" style="flex:1; padding:12px;">+ 퀴즈 추가</button>
+            <button onclick="App.addFolder()" class="btn" style="flex:1;">+ 폴더 추가</button>
+          </div>
+
+          <div class="list-container">
+            ${folders.length === 0 ? '<div class="empty-state">폴더를 추가해주세요</div>' : ''}
+            ${folders.map(f => {
+              const count = quizzes.filter(q => q.folderId === f.id).length;
+              return `
+                <div class="list-item" onclick="App.goToList('${f.id}')">
+                  <div class="item-info">
+                    <h3>📁 ${f.name}</h3>
+                    <p>퀴즈 ${count}개</p>
+                  </div>
+                  <div class="item-actions">
+                    <button onclick="App.renameFolder(event, '${f.id}')" class="btn-icon">✎</button>
+                    <button onclick="App.deleteFolder(event, '${f.id}')" class="btn-icon">🗑</button>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      },
+
+      viewList() {
+        const fId = this.state.currentFolderId;
+        const folder = DB.data.folders.find(f => f.id === fId);
+        const folderQuizzes = DB.data.quizzes.filter(q => q.folderId === fId);
+        const { reviewMode, selectMode, selectedQuizIds } = this.state;
+
+        if (!folder) { this.goHome(); return ''; }
+
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <button onclick="App.goHome()" class="btn">← 목록</button>
+            
+            ${folderQuizzes.length > 0 ? `
+              <button onclick="App.toggleSelectMode()" class="btn ${selectMode ? 'btn-primary' : ''}">
+                ${selectMode ? '완료' : '선택'}
+              </button>
+            ` : ''}
+          </div>
+          
+          <div class="header" style="align-items:flex-end;">
+            <div>
+              <h1 style="font-size:22px; font-weight:800;">${folder.name}</h1>
+              <p style="color:var(--sub); font-size:14px;">총 ${folderQuizzes.length}개의 퀴즈</p>
+            </div>
+
+            ${!selectMode ? `
+              <div style="text-align:right;">
+                <input type="checkbox" id="reviewToggle" class="toggle-input" ${reviewMode ? 'checked' : ''} onchange="App.toggleReviewModeState(event)">
+                <label for="reviewToggle" class="toggle-wrapper">
+                  <span class="toggle-label" style="font-size:12px;">오답 복습</span>
+                  <div class="toggle-switch"></div>
+                </label>
+              </div>
+            ` : ''}
+          </div>
+
+          ${folderQuizzes.length === 0 ? '<div class="empty-state">등록된 퀴즈가 없습니다.</div>' : ''}
+
+          <div class="list-container">
+            ${folderQuizzes.map(q => {
+              const isSelected = selectedQuizIds.includes(q.id);
+              return `
+                <div class="list-item ${selectMode && isSelected ? 'selected' : ''}" 
+                     onclick="${selectMode ? `App.toggleSelection('${q.id}')` : `App.startQuiz('${q.id}')`}">
+                  
+                  ${selectMode ? `<div class="select-check"></div>` : ''}
+                  
+                  <div class="item-info">
+                    <h3>📝 ${q.title}</h3>
+                    <p>문제 ${q.questions.length}개 ${reviewMode ? '<span style="color:var(--danger); font-size:11px;">(오답 우선)</span>' : ''}</p>
+                  </div>
+                  
+                  ${!selectMode ? `
+                  <div class="item-actions" onclick="event.stopPropagation()">
+                    <button onclick="App.renameQuiz(event, '${q.id}')" class="btn-icon">✎</button>
+                    <button onclick="App.deleteQuiz(event, '${q.id}')" class="btn-icon">🗑</button>
+                  </div>
+                  ` : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <div class="bottom-bar ${selectMode && selectedQuizIds.length > 0 ? 'active' : ''}">
+            <span style="font-weight:600;">${selectedQuizIds.length}개 선택됨</span>
+            <button onclick="App.mergeSelectedQuizzes()" class="btn btn-primary" style="border:none;">병합하기</button>
+          </div>
+        `;
+      },
+
+      viewQuiz() {
+        const quiz = this.state.currentQuiz;
+        const idx = this.state.qIndex;
+        const question = quiz.questions[idx];
+        const userAnswer = this.state.answers[idx];
+        const isAnswered = userAnswer !== undefined;
+
+        // 진행률 바
+        const progress = ((idx + 1) / quiz.questions.length) * 100;
+
+        return `
+          <div style="max-width:500px; margin:0 auto;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:12px; align-items:center;">
+              <button onclick="App.goToList('${quiz.folderId}')" class="btn">✕</button>
+              <div style="font-weight:700; color:var(--primary);">
+                ${quiz.isFiltered ? '🔥 오답 복습 중' : quiz.title}
+              </div>
+            </div>
+
+            <div style="height:6px; background:#e2e8f0; border-radius:3px; margin-bottom:20px; overflow:hidden;">
+              <div style="height:100%; background:var(--primary); width:${progress}%; transition:width 0.3s;"></div>
+            </div>
+
+            <div class="quiz-card">
+              <span class="question-badge">Question ${idx + 1} / ${quiz.questions.length}</span>
+              <h2 class="question-text">${question.q}</h2>
+              
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                ${question.options.map((opt, i) => {
+                  let statusClass = '';
+                  if (isAnswered) {
+                    if (i === question.correct) statusClass = 'correct';
+                    else if (i === userAnswer) statusClass = 'wrong';
+                  }
+                  return `
+                    <button 
+                      onclick="${!isAnswered ? `App.selectAnswer(${i})` : ''}" 
+                      class="option-btn ${statusClass}"
+                      ${isAnswered ? 'disabled' : ''}
+                    >
+                      ${opt}
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+
+              ${isAnswered ? `
+                <div style="margin-top:24px; padding-top:20px; border-top:1px solid #e2e8f0; animation: fadeIn 0.3s;">
+                  <p style="margin-bottom:12px; font-weight:800; font-size:18px; color:${userAnswer === question.correct ? '#15803d' : '#b91c1c'};">
+                    ${userAnswer === question.correct ? '🎉 정답!' : '🤔 아쉽네요.'}
+                  </p>
+                  ${question.explanation ? `<div style="font-size:14px; color:#475569; background:#f1f5f9; padding:12px; border-radius:8px; line-height:1.6;">💡 ${question.explanation}</div>` : ''}
+                  <button onclick="App.nextQuestion()" class="btn btn-primary" style="width:100%; margin-top:16px; padding:14px; font-size:16px;">
+                    ${idx < quiz.questions.length - 1 ? '다음 문제' : '결과 보기'}
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+          <style>@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }</style>
+        `;
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => App.render());
+  </script>
 </body>
 </html>
